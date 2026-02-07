@@ -1,0 +1,82 @@
+@page "/demo"
+
+@using Microsoft.AspNetCore.Authorization
+
+@rendermode InteractiveWebAssembly
+
+@implements IAsyncDisposable
+
+@attribute [Authorize]
+
+@inject IJSRuntime JS
+
+<PageTitle>Demo</PageTitle>
+
+<h1>Demo</h1>
+
+<p>Enable biometric sign-in and trigger a demo notification.</p>
+
+<div class="mb-3">
+    <a class="btn btn-outline-primary" href="Account/Biometrics">Enable biometrics</a>
+</div>
+
+<div class="d-flex flex-column gap-2">
+    <button class="btn btn-primary" @onclick="EnableNotifications">Enable notifications</button>
+    <button class="btn btn-outline-secondary" @onclick="SendNotification">Send demo notification</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <p class="text-secondary mt-3">@statusMessage</p>
+}
+
+@code {
+    private string? statusMessage;
+    private IJSObjectReference? notificationsModule;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (notificationsModule is not null)
+        {
+            await notificationsModule.DisposeAsync();
+        }
+    }
+
+    private async Task<IJSObjectReference> GetModuleAsync()
+    {
+        notificationsModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "/demo-notifications.js");
+        return notificationsModule;
+    }
+
+    private async Task EnableNotifications()
+    {
+        statusMessage = "Requesting notification permission...";
+        StateHasChanged();
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("requestPermission");
+            statusMessage = "Notifications enabled.";
+        }
+        catch (JSException ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task SendNotification()
+    {
+        statusMessage = "Sending demo notification...";
+        StateHasChanged();
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("sendDemo");
+            statusMessage = "Demo notification sent.";
+        }
+        catch (JSException ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+        }
+    }
+}

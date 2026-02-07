@@ -1,0 +1,82 @@
+@page "/Account/Biometrics"
+
+@using BlazorWADemo.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+
+@attribute [Authorize]
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Biometric Sign-in</PageTitle>
+
+<h1>Biometric sign-in</h1>
+<p>Add a passkey to use fingerprint or face recognition on this device.</p>
+
+<StatusMessage/>
+
+<form @formname="add-passkey" @onsubmit="AddPasskey" method="post">
+    <AntiforgeryToken/>
+    <PasskeySubmit Operation="PasskeyOperation.Create" Name="Input" class="btn btn-primary">Enable biometrics</PasskeySubmit>
+</form>
+
+@code {
+    private ApplicationUser? user;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "add-passkey")]
+    private PasskeyInputModel Input { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+    }
+
+    private async Task AddPasskey()
+    {
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(Input.Error))
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus($"Error: {Input.Error}", HttpContext);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Input.CredentialJson))
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: The browser did not provide a passkey.", HttpContext);
+            return;
+        }
+
+        var attestationResult = await SignInManager.PerformPasskeyAttestationAsync(Input.CredentialJson);
+        if (!attestationResult.Succeeded)
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus($"Error: {attestationResult.Failure.Message}", HttpContext);
+            return;
+        }
+
+        var addPasskeyResult = await UserManager.AddOrUpdatePasskeyAsync(user, attestationResult.Passkey);
+        if (!addPasskeyResult.Succeeded)
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: The passkey could not be added to your account.", HttpContext);
+            return;
+        }
+
+        RedirectManager.RedirectToCurrentPageWithStatus("Biometric sign-in enabled.", HttpContext);
+    }
+}
